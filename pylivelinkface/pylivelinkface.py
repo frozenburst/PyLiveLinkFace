@@ -7,7 +7,7 @@ from typing import Tuple
 import datetime
 import uuid
 import numpy as np
-from timecode import Timecode
+#from timecode import Timecode
 
 class FaceBlendShape(Enum):
     EyeBlinkLeft = 0
@@ -81,7 +81,7 @@ class PyLiveLinkFace:
     """
 
     def __init__(self, name: str = "Python_LiveLinkFace", 
-                        uuid: str = str(uuid.uuid1()), fps=60, 
+                        uuid: str = str(uuid.uuid1()), fps=60, denominator=1001,
                         filter_size: int = 5) -> None:
 
         # properties
@@ -91,12 +91,14 @@ class PyLiveLinkFace:
         self._filter_size = filter_size
 
         self._version = 6
-        now = datetime.datetime.now()
-        timcode = Timecode(
-            self._fps, f'{now.hour}:{now.minute}:{now.second}:{now.microsecond * 0.001}')
-        self._frames = timcode.frames
-        self._sub_frame = 1056060032                # I don't know how to calculate this
-        self._denominator = int(self._fps / 60)     # 1 most of the time
+        #now = datetime.datetime.now()
+        #timcode = Timecode(
+        #    self._fps, f'{now.hour}:{now.minute}:{now.second}:{now.microsecond * 0.001}')
+        #self._frames = timcode.frames
+        self._frames = 0
+        self._sub_frame = 0                         # I don't know how to calculate this
+        #self._denominator = int(self._fps / 60)    # 1 most of the time
+        self._denominator = denominator             # 1 most of the time
         self._blend_shapes = [0.000] * 61
         self._old_blend_shapes = []                 # used for filtering
         for i in range(61):
@@ -131,22 +133,27 @@ class PyLiveLinkFace:
         if value < 1:
             raise ValueError("Only fps values greater than 1 are allowed.")
         self._fps = value
+    
+    def reset_frame_number(self) -> None:
+        self._frames = 0
 
     def encode(self) -> bytes:
         """ Encodes the PyLiveLinkFace object into a bytes object so it can be 
-        send over a network. """              
-        
+        send over a network. """     
         version_packed = struct.pack('<I', self._version)
         uuiid_packed = bytes(self._uuid, 'utf-8')
         name_lenght_packed = struct.pack('!i', len(self._name))
         name_packed = bytes(self._name, 'utf-8')
 
-        now = datetime.datetime.now()
-        timcode = Timecode(
-            self._fps, f'{now.hour}:{now.minute}:{now.second}:{now.microsecond * 0.001}')
-        frames_packed = struct.pack("!II", timcode.frames, self._sub_frame)  
+        #now = datetime.datetime.now()
+        #timcode = Timecode(
+        #    self._fps, f'{now.hour}:{now.minute}:{now.second}:{now.microsecond * 0.001}')
+        frames_packed = struct.pack("!If", self._frames, self._sub_frame)  
         frame_rate_packed = struct.pack("!II", self._fps, self._denominator)
         data_packed = struct.pack('!B61f', 61, *self._blend_shapes)
+
+        # frames count
+        self._frames += 1
         
         return version_packed + uuiid_packed + name_lenght_packed + name_packed + \
             frames_packed + frame_rate_packed + data_packed
@@ -196,6 +203,13 @@ class PyLiveLinkFace:
             self._old_blend_shapes[index.value].append(value)
             filterd_value = mean(self._old_blend_shapes[index.value])
             self._blend_shapes[index.value] = filterd_value
+    
+    # custom modified by paulolbear
+    def set_blendshapes(self, in_blendshapes):
+        """
+        Sets the value of the blendshape all in a times
+        """
+        self._blend_shapes = in_blendshapes
 
     @staticmethod
     def decode(bytes_data: bytes) -> Tuple[bool, PyLiveLinkFace]:
@@ -246,3 +260,5 @@ class PyLiveLinkFace:
         else:
             #print("Data does not contain a face, returning default empty face.")
             return False, PyLiveLinkFace()
+
+    
